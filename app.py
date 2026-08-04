@@ -1,21 +1,19 @@
 import os
 from nicegui import ui
-import sqlite3
+import mysql.connector
 
 # Fake "database" - stored in memory (resets when server restarts)
 #users = {}  # {email: password}
 
-conn = sqlite3.connect("users.db",
-check_same_thread=False)
-cursor = conn.cursor()
-
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT UNIQUE,
-    password TEXT
+conn = mysql.connector.connect(
+    host="localhost",
+    user="root",
+    password="Vizshe@09!?%",
+    database="login_app"
 )
-""")
+cursor= conn.cursor()
+
+
 
 GREEN = "#0f9d78"
 
@@ -49,7 +47,7 @@ def login_page():
 
             def do_login():
                 cursor.execute(
-                    "SELECT * FROM users WHERE email=? AND password=?",
+                    "SELECT * FROM users WHERE email=%s AND password=%s",
                     (email.value, password.value)
                 )
 
@@ -78,27 +76,28 @@ def signup_page():
         with ui.card().classes("p-8").style("width: 340px; border-radius: 8px;"):
             ui.label("Signup").classes("text-2xl font-bold text-center w-full").style("margin-bottom: 15px;")
 
-            email = ui.input(placeholder="Enter your email").classes("w-full").props("outlined dense")
-            password = ui.input(placeholder="Create a password", password=True, password_toggle_button=True).classes("w-full").props("outlined dense").style("margin-top: 10px;")
-            confirm = ui.input(placeholder="Confirm your password", password=True, password_toggle_button=True).classes("w-full").props("outlined dense").style("margin-top: 10px;")
+            username = ui.input(placeholder="Enter your username").classes("w-full").props("outlined dense")
+            email = ui.input(placeholder="Enter your email").classes("w-full").props("outlined dense").style("margin-top: 10px;")
+            password = ui.input(placeholder="Create a password",password=True,password_toggle_button=True).classes("w-full").props("outlined dense").style("margin-top: 10px;")
+            confirm = ui.input(placeholder="Confirm your password",password=True,password_toggle_button=True).classes("w-full").props("outlined dense").style("margin-top: 10px;")
 
             def do_signup():
-                if not email.value or not password.value:
+                if not username.value or not email.value or not password.value:
                     notify_error("Please fill all fields")
                     return
                 if password.value != confirm.value:
                     notify_error("Passwords do not match")
                     return
                 cursor.execute(
-                    "SELECT * FROM users WHERE email=?",
+                    "SELECT * FROM users WHERE email=%s",
                     (email.value,)
                 )
                 if cursor.fetchone():
                     notify_error("Account already exists")
                     return
                 cursor.execute(
-                    "INSERT INTO users (email, password) VALUES (?, ?)",
-                    (email.value, password.value)
+                    "INSERT INTO users (username, email, password) VALUES (%s, %s, %s)",
+                    ( username.value, email.value, password.value)
                 )
 
                 conn.commit()
