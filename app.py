@@ -77,7 +77,7 @@ def signup_page():
         with ui.card().classes("p-8").style("width: 340px; border-radius: 8px;"):
             ui.label("Signup").classes("text-2xl font-bold text-center w-full").style("margin-bottom: 15px;")
 
-            username = ui.input(placeholder="Enter your username").classes("w-full").props("outlined dense")
+            username = ui.input(placeholder="Create your username").classes("w-full").props("outlined dense")
             email = ui.input(placeholder="Enter your email").classes("w-full").props("outlined dense").style("margin-top: 10px;")
             password = ui.input(placeholder="Create a password",password=True,password_toggle_button=True).classes("w-full").props("outlined dense").style("margin-top: 10px;")
             confirm = ui.input(placeholder="Confirm your password",password=True,password_toggle_button=True).classes("w-full").props("outlined dense").style("margin-top: 10px;")
