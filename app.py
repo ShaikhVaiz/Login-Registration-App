@@ -6,10 +6,11 @@ import mysql.connector
 #users = {}  # {email: password}
 
 conn = mysql.connector.connect(
-    host="localhost",
-    user="root",
-    password="Vizshe@09!?%",
-    database="login_app"
+    host="gateway01.ap-southeast-1.prod.aws.tidbcloud.com",
+    port=4000,
+    user="2axaGUcuFZV4H9Q.root",
+    password="6Iq93uZbuw68oSFx",
+    database="test"
 )
 cursor= conn.cursor()
 
