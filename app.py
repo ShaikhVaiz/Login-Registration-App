@@ -1,6 +1,13 @@
 import os
+import re
+import bcrypt
+import random
+import time
+import threading
 from nicegui import ui
 import mysql.connector
+import smtplib
+from email.message import EmailMessage
 
 # Fake "database" - stored in memory (resets when server restarts)
 #users = {}  # {email: password}
@@ -9,14 +16,40 @@ conn = mysql.connector.connect(
     host="gateway01.ap-southeast-1.prod.aws.tidbcloud.com",
     port=4000,
     user="2axaGUcuFZV4H9Q.root",
-    password="6Iq93uZbuw68oSFx",
+    password="pNL9VBEZo0nrmLev",
     database="test"
 )
 cursor= conn.cursor()
 
+cursor.execute("SET time_zone = '+05:30'")
+
 
 
 GREEN = "#0f9d78"
+
+otp_storage = {}
+otp_time = {}
+def valid_email(email):
+    pattern = r'^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'
+    return re.match(pattern, email)
+
+def valid_password(password):
+    if len(password) < 8:
+        return False
+
+    if not re.search(r'[A-Z]', password):
+        return False
+
+    if not re.search(r'[a-z]', password):
+        return False
+
+    if not re.search(r'[0-9]', password):
+        return False
+
+    if not re.search(r'[^A-Za-z0-9]', password):
+        return False
+
+    return True
 
 
 def notify_error(msg):
@@ -25,6 +58,55 @@ def notify_error(msg):
 
 def notify_success(msg):
     ui.notify(msg, type="positive")
+
+def send_test_email(receiver_email):
+    sender_email = "vaizshaikh786@gmail.com"
+    app_password = "apdasfrnwreykdib"
+
+    msg = EmailMessage()
+    msg["Subject"] = "Test Email"
+    msg["From"] = sender_email
+    msg["To"] = receiver_email
+
+    msg.set_content("Congratulations! Your Python application can send emails.")
+
+    with smtplib.SMTP("smtp.gmail.com", 587) as smtp:
+        smtp.starttls()
+        smtp.login(sender_email, app_password)
+        smtp.send_message(msg)
+
+def hash_password(password):
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+
+def check_password(password, hashed_password):
+    return bcrypt.checkpw(password.encode(), hashed_password.encode())
+
+
+def send_otp(receiver_email, otp):
+    sender_email = "vaizshaikh786@gmail.com"
+    app_password = "apdasfrnwreykdib"
+
+    msg = EmailMessage()
+    msg["Subject"] = "Password Reset OTP"
+    msg["From"] = sender_email
+    msg["To"] = receiver_email
+
+    msg.set_content(
+        f"""Your OTP is: {otp}
+
+This OTP is valid for 5 minutes.
+
+If you did not request this password reset, please ignore this email.
+"""
+    )
+
+    with smtplib.SMTP("smtp.gmail.com", 587) as smtp:
+        smtp.starttls()
+        smtp.login(sender_email, app_password)
+        smtp.send_message(msg)
+
+
 
 
 @ui.page("/")
@@ -44,18 +126,18 @@ def login_page():
             password = ui.input(placeholder="Enter your password", password=True, password_toggle_button=True).classes("w-full").props("outlined dense").style("margin-top: 10px;")
 
             with ui.row().classes("w-full justify-start").style("margin-top: 5px;"):
-                ui.link("Forgot password?", "#").style(f"color:{GREEN}; font-size:13px; text-decoration:none;")
+                ui.link("Forgot password?", "/forgot-password").style(f"color:{GREEN}; font-size:13px; text-decoration:none;")
 
             def do_login():
                 cursor.execute(
-                    "SELECT * FROM users WHERE email=%s AND password=%s",
-                    (email.value, password.value)
+                    "SELECT * FROM users WHERE email=%s",
+                    (email.value,)
                 )
 
                 user = cursor.fetchone()
 
-                if user:
-                    notify_success(f"Welcome back, {email.value}!")
+                if user and check_password(password.value, user[3]):
+                    notify_success(f"Welcome back, {user[1]}!")
                     ui.navigate.to("/dashboard")
                 else:
                     notify_error("Invalid email or password")
@@ -86,6 +168,14 @@ def signup_page():
                 if not username.value or not email.value or not password.value:
                     notify_error("Please fill all fields")
                     return
+                if not valid_email(email.value):
+                    notify_error("Please enter a valid email address")
+                    return
+                if not valid_password(password.value):
+                    notify_error(
+                        "Password must be at least 8 characters and contain uppercase, lowercase, number and special character."
+                    )
+                    return
                 if password.value != confirm.value:
                     notify_error("Passwords do not match")
                     return
@@ -94,11 +184,20 @@ def signup_page():
                     (email.value,)
                 )
                 if cursor.fetchone():
-                    notify_error("Account already exists")
+                    notify_error("Email is already registered")
                     return
+
+                cursor.execute(
+                    "SELECT * FROM users WHERE username=%s",
+                    (username.value,)
+                )
+                if cursor.fetchone():
+                    notify_error("Username is already taken")
+                    return
+                hashed_password = hash_password(password.value)
                 cursor.execute(
                     "INSERT INTO users (username, email, password) VALUES (%s, %s, %s)",
-                    ( username.value, email.value, password.value)
+                    ( username.value, email.value, hashed_password)
                 )
 
                 conn.commit()
@@ -114,11 +213,174 @@ def signup_page():
                 ui.link("Login", "/login").style(f"color:{GREEN}; font-weight:bold; font-size:13px; text-decoration:none;")
 
 
+@ui.page("/forgot-password")
+def forgot_password_page():
+    ui.query("body").style(f"background-color: {GREEN};")
+
+    with ui.column().classes("absolute-center items-center"):
+        with ui.card().classes("p-8").style("width: 340px; border-radius: 8px;"):
+
+            ui.label("Forgot Password").classes(
+                "text-2xl font-bold text-center w-full"
+            ).style("margin-bottom:15px;")
+
+            email = ui.input(
+                placeholder="Enter your registered email"
+            ).classes("w-full").props("outlined dense")
+
+            otp = ui.input(placeholder="Enter 6-digit OTP").classes("w-full").props("outlined dense").style("margin-top:10px;")
+            otp.set_visibility(False)
+
+            countdown = ui.label("").style("color:red; font-size:13px;")
+            countdown.set_visibility(False)
+
+            new_password = ui.input(
+                placeholder="New Password",
+                password=True,
+                password_toggle_button=True
+            ).classes("w-full").props("outlined dense").style("margin-top:10px;")
+            new_password.set_visibility(False)
+
+            confirm_password = ui.input(
+                placeholder="Confirm New Password",
+                password=True,
+                password_toggle_button=True
+            ).classes("w-full").props("outlined dense").style("margin-top:10px;")
+            confirm_password.set_visibility(False)
+
+            countdown = ui.label("").style("color:red; font-size:13px;")
+            countdown.set_visibility(False)
+
+            def send_otp_clicked():
+
+                if not valid_email(email.value):
+                    notify_error("Please enter a valid email")
+                    return
+
+                cursor.execute(
+                    "SELECT * FROM users WHERE email=%s",
+                    (email.value,)
+                )
+
+                user = cursor.fetchone()
+
+                if not user:
+                    notify_error("Email not found")
+                    return
+
+                if email.value in otp_time:
+                    elapsed = time.time() - otp_time[email.value]
+
+                    if elapsed < 300:   # 300 seconds = 5 minutes
+                        remaining = int((300 - elapsed) / 60) + 1
+                        notify_error(
+                            f"Please wait {remaining} minute(s) before requesting another OTP."
+                        )
+                        return
+
+                generated_otp = str(random.randint(100000, 999999))
+
+                otp_storage[email.value] = generated_otp
+                otp_time[email.value] = time.time()
+
+                threading.Thread(
+                    target=send_otp,
+                    args=(email.value, generated_otp),
+                    daemon=True
+                ).start()
+
+                otp.set_visibility(True)
+                countdown.set_visibility(True)
+
+                notify_success("OTP sent successfully!")
+
+            def verify_otp():
+                if email.value not in otp_storage:
+                    notify_error("Please request an OTP first.")
+                    return
+
+                if time.time() - otp_time[email.value] > 300:
+                    del otp_storage[email.value]
+                    del otp_time[email.value]
+
+                    notify_error("OTP has expired. Please request a new OTP.")
+                    return
+
+                if otp.value != otp_storage[email.value]:
+                    notify_error("Incorrect OTP")
+                    return
+
+                notify_success("OTP verified successfully!")
+                new_password.set_visibility(True)
+                confirm_password.set_visibility(True)
+                reset_button.set_visibility(True)
+
+
+            def reset_password():
+                if new_password.value != confirm_password.value:
+                    notify_error("Passwords do not match")
+                    return
+
+                if not valid_password(new_password.value):
+                    notify_error(
+                    "Password must contain uppercase, lowercase, number, special character and be at least 8 characters."
+                    )
+                    return
+
+                hashed = hash_password(new_password.value)
+
+                cursor.execute(
+                    "UPDATE users SET password=%s WHERE email=%s",
+                    (hashed, email.value)
+                )
+
+                conn.commit()
+
+                del otp_storage[email.value]
+
+                if email.value in otp_time:
+                    del otp_time[email.value]
+
+                notify_success("Password updated successfully!")
+
+                ui.navigate.to("/login")
+
+            def update_countdown():
+                if email.value not in otp_time:
+                    countdown.set_text("")
+                    return
+
+                remaining = 300 - int(time.time() - otp_time[email.value])
+
+                if remaining <= 0:
+                    countdown.set_text("OTP Expired")
+                    return
+
+                minutes = remaining // 60
+                seconds = remaining % 60
+
+                countdown.set_text(
+                    f"OTP expires in {minutes:02d}:{seconds:02d}"
+                )
+
+            ui.button("Send OTP",on_click=send_otp_clicked).classes("w-full text-white font-bold").style(f"background-color:{GREEN} !important; margin-top:15px;")
+            ui.button("Verify OTP",on_click=verify_otp).classes("w-full text-white font-bold").style(f"background-color:{GREEN} !important; margin-top:10px;")
+            reset_button = ui.button("Reset Password",on_click=reset_password).classes("w-full text-white font-bold").style(f"background-color:{GREEN} !important; margin-top:10px;")
+            reset_button.set_visibility(False)
+            ui.timer(1.0, update_countdown)
+            ui.link("Back to Login","/login").style(f"color:{GREEN}; margin-top:15px;")
+
+            
+
 @ui.page("/dashboard")
 def dashboard_page():
     with ui.column().classes("absolute-center items-center"):
         ui.label("You are logged in!").classes("text-2xl font-bold")
         ui.link("Logout", "/login").style(f"color:{GREEN}; margin-top:10px;")
+
+
+
+
 
 
 ui.run(title="Login / Signup",
