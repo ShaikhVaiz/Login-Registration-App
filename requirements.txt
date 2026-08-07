@@ -1,2 +1,3 @@
 nicegui
 mysql-connector-python
+bcrypt
