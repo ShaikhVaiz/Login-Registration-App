@@ -16,7 +16,7 @@ conn = mysql.connector.connect(
     host="gateway01.ap-southeast-1.prod.aws.tidbcloud.com",
     port=4000,
     user="2axaGUcuFZV4H9Q.root",
-    password="pNL9VBEZo0nrmLev",
+    password=os.environ.get("DB_PASSWORD"),
     database="test"
 )
 cursor= conn.cursor()
@@ -85,7 +85,7 @@ def check_password(password, hashed_password):
 
 def send_otp(receiver_email, otp):
     sender_email = "vaizshaikh786@gmail.com"
-    app_password = "apdasfrnwreykdib"
+    app_password = "waewtthuolgsuuob"
 
     msg = EmailMessage()
     msg["Subject"] = "Password Reset OTP"
