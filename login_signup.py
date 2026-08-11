@@ -3,14 +3,12 @@ import re
 import bcrypt
 import random
 import time
-import threading
 from nicegui import ui
 import mysql.connector
-import smtplib
-from email.message import EmailMessage
+import resend
 
-# Fake "database" - stored in memory (resets when server restarts)
-#users = {}  # {email: password}
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
+resend.api_key = RESEND_API_KEY
 
 conn = mysql.connector.connect(
     host="gateway01.ap-southeast-1.prod.aws.tidbcloud.com",
@@ -84,27 +82,33 @@ def check_password(password, hashed_password):
 
 
 def send_otp(receiver_email, otp):
-    sender_email = "vaizshaikh786@gmail.com"
-    app_password = "waewtthuolgsuuob"
+    try:
+        params = {
+            "from": "onboarding@resend.dev",
+            "to": [receiver_email],
+            "subject": "Password Reset OTP",
+            "html": f"""
+                <h2>Password Reset</h2>
 
-    msg = EmailMessage()
-    msg["Subject"] = "Password Reset OTP"
-    msg["From"] = sender_email
-    msg["To"] = receiver_email
+                <p>Your OTP is:</p>
 
-    msg.set_content(
-        f"""Your OTP is: {otp}
+                <h1>{otp}</h1>
 
-This OTP is valid for 5 minutes.
+                <p>This OTP is valid for <strong>5 minutes</strong>.</p>
 
-If you did not request this password reset, please ignore this email.
-"""
-    )
+                <p>If you did not request this password reset,
+                please ignore this email.</p>
+            """
+        }
 
-    with smtplib.SMTP("smtp.gmail.com", 587) as smtp:
-        smtp.starttls()
-        smtp.login(sender_email, app_password)
-        smtp.send_message(msg)
+        email = resend.Emails.send(params)
+
+        print("OTP email sent:", email)
+        return True
+
+    except Exception as e:
+        print("OTP email failed:", e)
+        return False
 
 
 
@@ -252,7 +256,6 @@ def forgot_password_page():
             countdown.set_visibility(False)
 
             def send_otp_clicked():
-
                 if not valid_email(email.value):
                     notify_error("Please enter a valid email")
                     return
@@ -271,28 +274,30 @@ def forgot_password_page():
                 if email.value in otp_time:
                     elapsed = time.time() - otp_time[email.value]
 
-                    if elapsed < 300:   # 300 seconds = 5 minutes
+                    if elapsed < 300:
                         remaining = int((300 - elapsed) / 60) + 1
+
                         notify_error(
                             f"Please wait {remaining} minute(s) before requesting another OTP."
                         )
                         return
 
-                generated_otp = str(random.randint(100000, 999999))
+    
+                generated_otp = str(random.randint(100000, 999999))    
+                success = send_otp(email.value, generated_otp)
+
+                if not success:
+                    notify_error("Failed to send OTP. Please try again later.")
+                    return
 
                 otp_storage[email.value] = generated_otp
                 otp_time[email.value] = time.time()
-
-                threading.Thread(
-                    target=send_otp,
-                    args=(email.value, generated_otp),
-                    daemon=True
-                ).start()
 
                 otp.set_visibility(True)
                 countdown.set_visibility(True)
 
                 notify_success("OTP sent successfully!")
+
 
             def verify_otp():
                 if email.value not in otp_storage:
@@ -311,10 +316,10 @@ def forgot_password_page():
                     return
 
                 notify_success("OTP verified successfully!")
+
                 new_password.set_visibility(True)
                 confirm_password.set_visibility(True)
                 reset_button.set_visibility(True)
-
 
             def reset_password():
                 if new_password.value != confirm_password.value:
