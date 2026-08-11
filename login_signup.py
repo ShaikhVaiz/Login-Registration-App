@@ -10,17 +10,22 @@ import resend
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
 resend.api_key = RESEND_API_KEY
 
-conn = mysql.connector.connect(
-    host="gateway01.ap-southeast-1.prod.aws.tidbcloud.com",
-    port=4000,
-    user="2axaGUcuFZV4H9Q.root",
-    password=os.environ.get("DB_PASSWORD"),
-    database="test"
-)
+def get_db_connection():
+    conn = mysql.connector.connect(
+        host="gateway01.ap-southeast-1.prod.aws.tidbcloud.com",
+        port=4000,
+        user="2axaGUcuFZV4H9Q.root",
+        password=os.environ.get("DB_PASSWORD"),
+        database="test"
+    )
 
-cursor= conn.cursor()
-cursor.execute("SET time_zone = '+05:30'")
+    conn.ping(reconnect=True, attempts=3, delay=2)
 
+    cursor = conn.cursor()
+    cursor.execute("SET time_zone = '+05:30'")
+    cursor.close()
+
+    return conn
 
 
 GREEN = "#0f9d78"
@@ -136,12 +141,35 @@ def login_page():
                 ui.link("Forgot password?", "/forgot-password").style(f"color:{GREEN}; font-size:13px; text-decoration:none;")
 
             def do_login():
-                cursor.execute(
-                    "SELECT * FROM users WHERE email=%s",
-                    (email.value,)
-                )
+                db_conn = None
+                cursor = None
 
-                user = cursor.fetchone()
+                try:
+                    db_conn = get_db_connection()
+                    cursor = db_conn.cursor()
+
+                    cursor.execute(
+                        "SELECT * FROM users WHERE email=%s",
+                        (email.value,)
+                    )
+
+                    user = cursor.fetchone()
+
+                    if user and check_password(password.value, user[3]):
+                        notify_success(f"Welcome back, {user[1]}!")
+                        ui.navigate.to("/dashboard")
+                    else:
+                        notify_error("Invalid email or password")
+
+                except Exception as e:
+                    print("Login database error:", e)
+                    notify_error("Database connection error. Please try again.")
+
+                finally:
+                    if cursor:
+                        cursor.close()
+                    if db_conn:
+                        db_conn.close()
 
                 if user and check_password(password.value, user[3]):
                     notify_success(f"Welcome back, {user[1]}!")
@@ -175,41 +203,69 @@ def signup_page():
                 if not username.value or not email.value or not password.value:
                     notify_error("Please fill all fields")
                     return
+
                 if not valid_email(email.value):
                     notify_error("Please enter a valid email address")
                     return
+
+                
                 if not valid_password(password.value):
                     notify_error(
                         "Password must be at least 8 characters and contain uppercase, lowercase, number and special character."
                     )
                     return
+
                 if password.value != confirm.value:
-                    notify_error("Passwords do not match")
-                    return
-                cursor.execute(
-                    "SELECT * FROM users WHERE email=%s",
-                    (email.value,)
-                )
-                if cursor.fetchone():
-                    notify_error("Email is already registered")
-                    return
+                   notify_error("Passwords do not match")
+                   return
+                
+                db_conn = None
+                cursor = None
 
-                cursor.execute(
-                    "SELECT * FROM users WHERE username=%s",
-                    (username.value,)
-                )
-                if cursor.fetchone():
-                    notify_error("Username is already taken")
-                    return
-                hashed_password = hash_password(password.value)
-                cursor.execute(
-                    "INSERT INTO users (username, email, password) VALUES (%s, %s, %s)",
-                    ( username.value, email.value, hashed_password)
-                )
+                try:
+                    db_conn = get_db_connection()
+                    cursor = db_conn.cursor()
 
-                conn.commit()
-                notify_success("Account created! Please login.")
-                ui.navigate.to("/login")
+                    cursor.execute(
+                        "SELECT * FROM users WHERE email=%s",
+                        (email.value,)
+                    )
+
+                    if cursor.fetchone():
+                        notify_error("Email is already registered")
+                        return
+
+                    cursor.execute(
+                        "SELECT * FROM users WHERE username=%s",
+                        (username.value,)
+                    )
+
+                    if cursor.fetchone():
+                        notify_error("Username is already taken")
+                        return
+
+                    hashed_password = hash_password(password.value)
+
+                    cursor.execute(
+                        "INSERT INTO users (username, email, password) VALUES (%s, %s, %s)",
+                        (username.value, email.value, hashed_password)
+                    )
+
+                    db_conn.commit()
+
+                    notify_success("Account created! Please login.")
+                    ui.navigate.to("/login")
+
+                except Exception as e:
+                    print("Signup database error:", e)
+                    notify_error("Database connection error. Please try again.")
+
+                finally:
+                    if cursor:
+                        cursor.close()
+
+                    if db_conn:
+                        db_conn.close()
 
             ui.button("Signup", on_click=do_signup).classes("w-full text-white font-bold").style(
                 f"background-color:{GREEN} !important; margin-top:15px; padding:10px;"
@@ -268,12 +324,32 @@ def forgot_password_page():
                     notify_error("Please enter a valid email")
                     return
 
-                cursor.execute(
-                    "SELECT * FROM users WHERE email=%s",
-                    (email.value,)
-                )
+                db_conn = None
+                cursor = None
 
-                user = cursor.fetchone()
+                try:
+                    db_conn = get_db_connection()
+                    cursor = db_conn.cursor()
+
+                    cursor.execute(
+                        "SELECT * FROM users WHERE email=%s",
+                        (email.value,)
+                    )
+
+                    user = cursor.fetchone()
+
+                except Exception as e:
+                    print("OTP database error:", e)
+                    notify_error("Database connection error. Please try again.")
+                    return
+
+                finally:
+                    if cursor:
+                        cursor.close()
+
+                    if db_conn:
+                        db_conn.close()
+
 
                 if not user:
                     notify_error("Email not found")
@@ -371,13 +447,32 @@ def forgot_password_page():
 
                 hashed = hash_password(new_password.value)
 
-                cursor.execute(
-                    "UPDATE users SET password=%s WHERE email=%s",
-                    (hashed, email.value)
-                )
+                db_conn = None
+                cursor = None
 
-                conn.commit()
+                try:
+                    db_conn = get_db_connection()
+                    cursor = db_conn.cursor()
 
+                    cursor.execute(
+                        "UPDATE users SET password=%s WHERE email=%s",
+                        (hashed, email.value)
+                    )
+
+                    db_conn.commit()
+
+                except Exception as e:
+                    print("Reset password database error:", e)
+                    notify_error("Database connection error. Please try again.")
+                    return
+
+                finally:
+                    if cursor:
+                        cursor.close()
+
+                    if db_conn:
+                        db_conn.close()
+                        
                 del otp_storage[email.value]
 
                 if email.value in otp_time:
