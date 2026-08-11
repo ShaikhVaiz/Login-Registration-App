@@ -19,8 +19,9 @@ conn = mysql.connector.connect(
     password=os.environ.get("DB_PASSWORD"),
     database="test"
 )
-#cursor= conn.cursor()
-#cursor.execute("SET time_zone = '+05:30'")
+
+cursor= conn.cursor()
+cursor.execute("SET time_zone = '+05:30'")
 
 
 
