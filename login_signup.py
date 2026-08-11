@@ -27,6 +27,9 @@ GREEN = "#0f9d78"
 
 otp_storage = {}
 otp_time = {}
+otp_verified = False
+
+
 def valid_email(email):
     pattern = r'^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'
     return re.match(pattern, email)
@@ -256,6 +259,11 @@ def forgot_password_page():
             countdown.set_visibility(False)
 
             def send_otp_clicked():
+
+                if otp_verified:
+                    notify_success("You have already verified the OTP.")
+                    return
+                
                 if not valid_email(email.value):
                     notify_error("Please enter a valid email")
                     return
@@ -300,9 +308,23 @@ def forgot_password_page():
 
 
             def verify_otp():
-                if email.value not in otp_storage:
-                    notify_error("Please request an OTP first.")
+                global otp_verified
+
+
+                if not otp.value:
+                    notify_error("Please enter the OTP.")
                     return
+
+    
+                if otp_verified:
+                   notify_success("You have already verified the OTP.")
+                   return
+
+
+                if email.value not in otp_storage:
+                   notify_error("Please request an OTP first.")
+                   return
+
 
                 if time.time() - otp_time[email.value] > 300:
                     del otp_storage[email.value]
@@ -311,15 +333,30 @@ def forgot_password_page():
                     notify_error("OTP has expired. Please request a new OTP.")
                     return
 
+
                 if otp.value != otp_storage[email.value]:
                     notify_error("Incorrect OTP")
                     return
 
+    
+                otp_verified = True
+
+                send_otp_button.set_text("OTP Already Verified")
+
                 notify_success("OTP verified successfully!")
+
+                send_otp_button.set_visibility(False)
+                verify_otp_button.set_visibility(False)
+
+                email.disable()
+                otp.disable()
 
                 new_password.set_visibility(True)
                 confirm_password.set_visibility(True)
                 reset_button.set_visibility(True)
+
+                countdown.set_text("OTP Verified ✓")
+                countdown_timer.cancel()
 
             def reset_password():
                 if new_password.value != confirm_password.value:
@@ -351,6 +388,9 @@ def forgot_password_page():
                 ui.navigate.to("/login")
 
             def update_countdown():
+                if otp_verified:
+                    return
+
                 if email.value not in otp_time:
                     countdown.set_text("")
                     return
@@ -368,11 +408,11 @@ def forgot_password_page():
                     f"OTP expires in {minutes:02d}:{seconds:02d}"
                 )
 
-            ui.button("Send OTP",on_click=send_otp_clicked).classes("w-full text-white font-bold").style(f"background-color:{GREEN} !important; margin-top:15px;")
-            ui.button("Verify OTP",on_click=verify_otp).classes("w-full text-white font-bold").style(f"background-color:{GREEN} !important; margin-top:10px;")
+            send_otp_button = ui.button("Send OTP",on_click=send_otp_clicked).classes("w-full text-white font-bold").style(f"background-color:{GREEN} !important; margin-top:15px;")
+            verify_otp_button = ui.button("Verify OTP",on_click=verify_otp).classes("w-full text-white font-bold").style(f"background-color:{GREEN} !important; margin-top:15px;")
             reset_button = ui.button("Reset Password",on_click=reset_password).classes("w-full text-white font-bold").style(f"background-color:{GREEN} !important; margin-top:10px;")
             reset_button.set_visibility(False)
-            ui.timer(1.0, update_countdown)
+            countdown_timer = ui.timer(1.0, update_countdown)
             ui.link("Back to Login","/login").style(f"color:{GREEN}; margin-top:15px;")
 
             
@@ -382,10 +422,6 @@ def dashboard_page():
     with ui.column().classes("absolute-center items-center"):
         ui.label("You are logged in!").classes("text-2xl font-bold")
         ui.link("Logout", "/login").style(f"color:{GREEN}; margin-top:10px;")
-
-
-
-
 
 
 ui.run(title="Login / Signup",
