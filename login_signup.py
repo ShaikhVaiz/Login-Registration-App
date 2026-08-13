@@ -65,21 +65,6 @@ def notify_error(msg):
 def notify_success(msg):
     ui.notify(msg, type="positive")
 
-def send_test_email(receiver_email):
-    sender_email = "vaizshaikh786@gmail.com"
-    app_password = "apdasfrnwreykdib"
-
-    msg = EmailMessage()
-    msg["Subject"] = "Test Email"
-    msg["From"] = sender_email
-    msg["To"] = receiver_email
-
-    msg.set_content("Congratulations! Your Python application can send emails.")
-
-    with smtplib.SMTP("smtp.gmail.com", 587) as smtp:
-        smtp.starttls()
-        smtp.login(sender_email, app_password)
-        smtp.send_message(msg)
 
 def hash_password(password):
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
@@ -170,12 +155,6 @@ def login_page():
                         cursor.close()
                     if db_conn:
                         db_conn.close()
-
-                if user and check_password(password.value, user[3]):
-                    notify_success(f"Welcome back, {user[1]}!")
-                    ui.navigate.to("/dashboard")
-                else:
-                    notify_error("Invalid email or password")
 
             ui.button("Login", on_click=do_login).classes("w-full text-white font-bold").style(
                 f"background-color:{GREEN} !important; margin-top:15px; padding:10px;"
