@@ -6,6 +6,7 @@ import time
 from nicegui import ui
 import mysql.connector
 import resend
+import dashboard
 
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
 resend.api_key = RESEND_API_KEY
@@ -488,15 +489,6 @@ def forgot_password_page():
             reset_button.set_visibility(False)
             countdown_timer = ui.timer(1.0, update_countdown)
             ui.link("Back to Login","/login").style(f"color:{GREEN}; margin-top:15px;")
-
-            
-
-@ui.page("/dashboard")
-def dashboard_page():
-    with ui.column().classes("absolute-center items-center"):
-        ui.label("You are logged in!").classes("text-2xl font-bold")
-        ui.link("Logout", "/login").style(f"color:{GREEN}; margin-top:10px;")
-
 
 ui.run(title="Login / Signup",
        host="0.0.0.0",
